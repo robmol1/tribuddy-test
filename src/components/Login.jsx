@@ -12,7 +12,7 @@ export default function Login() {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen">
+    <div className="flex flex-col items-center justify-center h-screen">
       <form onSubmit={handleLogin} className="bg-white p-8 rounded shadow-md w-96">
         <h2 className="text-2xl font-bold mb-4">Log in bij TriBuddy</h2>
         <input
@@ -24,6 +24,10 @@ export default function Login() {
         />
         <button className="bg-blue-500 text-white px-4 py-2 rounded w-full">Verzend magic link</button>
       </form>
+      <p className="mt-4 text-xs text-gray-400">
+        v{__APP_VERSION__} · {__APP_COMMIT__} ·{' '}
+        {new Date(__APP_BUILD_TIME__).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}
+      </p>
     </div>
   )
 }
