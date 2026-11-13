@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../supabaseClient"
 import { fetchPublicProfiles } from "../publicProfiles"
 import { Button, EmptyState, ListCard, StatusText, UserIcon } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 import { levelLabel } from "../i18n/labels"
+import { matchesByBuddy } from "../matches"
+import MatchActions from "./MatchActions"
 
 export default function EventParticipants({ eventId, session, joined }) {
   const currentUserId = session?.user?.id
@@ -50,7 +52,7 @@ export default function EventParticipants({ eventId, session, joined }) {
       // 2️⃣ Alle matches voor dit event
       const { data: matchData, error: matchError } = await supabase
         .from("matches")
-        .select("user1_id, user2_id, status")
+        .select("id, user1_id, user2_id, status")
         .eq("event_id", eventId)
 
       if (matchError) {
@@ -65,25 +67,11 @@ export default function EventParticipants({ eventId, session, joined }) {
     if (currentUserId) loadData()
   }, [eventId, currentUserId])
 
-  /* --------------------------------------------------
-     Helpers
-  -------------------------------------------------- */
-  const getMatchWith = (otherUserId) => {
-    const relevant = matches.filter(
-      (m) =>
-        (m.user1_id === currentUserId &&
-          m.user2_id === otherUserId) ||
-        (m.user2_id === currentUserId &&
-          m.user1_id === otherUserId)
-    )
-
-    // accepted wint altijd
-    return (
-      relevant.find((m) => m.status === "accepted") ||
-      relevant.find((m) => m.status === "pending") ||
-      null
-    )
-  }
+  // Geldende match per deelnemer (accepted wint, ingetrokken telt niet mee)
+  const matchByBuddy = useMemo(
+    () => matchesByBuddy(matches, currentUserId),
+    [matches, currentUserId]
+  )
 
   /* --------------------------------------------------
      Actions
@@ -97,17 +85,21 @@ export default function EventParticipants({ eventId, session, joined }) {
       return
     }
 
-    if (getMatchWith(otherUserId)) {
+    if (matchByBuddy.has(otherUserId)) {
       setMessage(t("participants.exists"))
       return
     }
 
-    const { error } = await supabase.from("matches").insert({
-      user1_id: currentUserId,
-      user2_id: otherUserId,
-      event_id: eventId,
-      status: "pending",
-    })
+    const { data, error } = await supabase
+      .from("matches")
+      .insert({
+        user1_id: currentUserId,
+        user2_id: otherUserId,
+        event_id: eventId,
+        status: "pending",
+      })
+      .select("id, user1_id, user2_id, status")
+      .single()
 
     if (error) {
       console.error("Buddy request error:", error)
@@ -115,39 +107,11 @@ export default function EventParticipants({ eventId, session, joined }) {
       return
     }
 
-    setMatches((prev) => [
-      ...prev,
-      {
-        user1_id: currentUserId,
-        user2_id: otherUserId,
-        status: "pending",
-      },
-    ])
+    setMatches((prev) => [...prev, data])
   }
 
-  const acceptBuddy = async (otherUserId) => {
-    setMessage(null)
-    const { error } = await supabase
-      .from("matches")
-      .update({ status: "accepted" })
-      .eq("event_id", eventId)
-      .eq("user1_id", otherUserId)
-      .eq("user2_id", currentUserId)
-
-    if (error) {
-      console.error("Accept buddy error:", error)
-      setMessage(t("participants.acceptFailed"))
-      return
-    }
-
-    setMatches((prev) =>
-      prev.map((m) =>
-        m.user1_id === otherUserId && m.user2_id === currentUserId
-          ? { ...m, status: "accepted" }
-          : m
-      )
-    )
-  }
+  const updateMatch = (updated) =>
+    setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
 
   /* --------------------------------------------------
      Render
@@ -163,35 +127,29 @@ export default function EventParticipants({ eventId, session, joined }) {
       )}
 
       {participants.map((p) => {
-        const match = getMatchWith(p.user_id)
-        const status = match?.status
+        const match = matchByBuddy.get(p.user_id)
+        const name = `${p.users.first_name} ${p.users.last_name}`
 
         return (
           <ListCard
             key={p.user_id}
-            title={`${p.users.first_name} ${p.users.last_name}`}
+            title={name}
             meta={`${levelLabel(t, p.users.experience_level)} — ${p.users.country_code}`}
           >
-            {joined && !status && p.buddy_enabled && (
+            {joined && !match && p.buddy_enabled && (
               <Button variant="outline" size="sm" onClick={() => requestBuddy(p.user_id)}>
                 {t("participants.connect")}
               </Button>
             )}
 
-            {status === "pending" &&
-              match.user2_id === currentUserId && (
-                <Button size="sm" onClick={() => acceptBuddy(p.user_id)}>
-                  {t("participants.accept")}
-                </Button>
-              )}
-
-            {status === "pending" &&
-              match.user1_id === currentUserId && (
-                <StatusText>{t("participants.requestSent")}</StatusText>
-              )}
-
-            {status === "accepted" && (
-              <StatusText tone="success">{t("participants.buddy")}</StatusText>
+            {match && (
+              <MatchActions
+                match={match}
+                currentUserId={currentUserId}
+                buddyName={name}
+                acceptedLabel={t("participants.buddy")}
+                onChange={updateMatch}
+              />
             )}
           </ListCard>
         )
