@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { Button, EmptyState, ListCard, StatusText, UserIcon } from "./ui"
+import { useT } from "../i18n/LanguageProvider"
+import { levelLabel } from "../i18n/labels"
 
 export default function EventParticipants({ eventId, session, joined }) {
   const currentUserId = session?.user?.id
+  const { t } = useT()
 
   const [participants, setParticipants] = useState([])
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState(null)
 
   /* --------------------------------------------------
      Load deelnemers + matches
@@ -85,14 +90,15 @@ export default function EventParticipants({ eventId, session, joined }) {
   -------------------------------------------------- */
   const requestBuddy = async (otherUserId) => {
     if (!currentUserId) return
+    setMessage(null)
 
     if (!joined) {
-      alert("Je moet deelnemen aan het event om een buddy-verzoek te sturen.")
+      setMessage(t("participants.mustJoin"))
       return
     }
 
     if (getMatchWith(otherUserId)) {
-      alert("Er bestaat al een buddy-verzoek.")
+      setMessage(t("participants.exists"))
       return
     }
 
@@ -105,7 +111,7 @@ export default function EventParticipants({ eventId, session, joined }) {
 
     if (error) {
       console.error("Buddy request error:", error)
-      alert("Buddy-verzoek kon niet worden verstuurd")
+      setMessage(t("participants.requestFailed"))
       return
     }
 
@@ -120,6 +126,7 @@ export default function EventParticipants({ eventId, session, joined }) {
   }
 
   const acceptBuddy = async (otherUserId) => {
+    setMessage(null)
     const { error } = await supabase
       .from("matches")
       .update({ status: "accepted" })
@@ -129,7 +136,7 @@ export default function EventParticipants({ eventId, session, joined }) {
 
     if (error) {
       console.error("Accept buddy error:", error)
-      alert("Buddy-verzoek kon niet worden geaccepteerd")
+      setMessage(t("participants.acceptFailed"))
       return
     }
 
@@ -145,57 +152,48 @@ export default function EventParticipants({ eventId, session, joined }) {
   /* --------------------------------------------------
      Render
   -------------------------------------------------- */
-  if (loading) return <p>Deelnemers laden…</p>
+  if (loading) return <StatusText>{t("participants.loading")}</StatusText>
 
   return (
-    <div>
+    <div className="space-y-3">
+      {message && <StatusText tone="danger">{message}</StatusText>}
+
+      {participants.length === 0 && (
+        <EmptyState icon={<UserIcon className="h-5 w-5" />} title={t("participants.empty")} />
+      )}
+
       {participants.map((p) => {
         const match = getMatchWith(p.user_id)
         const status = match?.status
 
         return (
-          <div
+          <ListCard
             key={p.user_id}
-            style={{
-              padding: "12px",
-              marginBottom: "10px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              background: "#fafafa",
-            }}
+            title={`${p.users.first_name} ${p.users.last_name}`}
+            meta={`${levelLabel(t, p.users.experience_level)} — ${p.users.country_code}`}
           >
-            <strong>
-              {p.users.first_name} {p.users.last_name}
-            </strong>
-
-            <div style={{ color: "#666", fontSize: "14px" }}>
-              {p.users.experience_level} — {p.users.country_code}
-            </div>
-
             {joined && !status && p.buddy_enabled && (
-  <button onClick={() => requestBuddy(p.user_id)}>
-    Connect als buddy
-  </button>
-)}
-
-
+              <Button variant="outline" size="sm" onClick={() => requestBuddy(p.user_id)}>
+                {t("participants.connect")}
+              </Button>
+            )}
 
             {status === "pending" &&
               match.user2_id === currentUserId && (
-                <button onClick={() => acceptBuddy(p.user_id)}>
-                  Accepteer buddy
-                </button>
+                <Button size="sm" onClick={() => acceptBuddy(p.user_id)}>
+                  {t("participants.accept")}
+                </Button>
               )}
 
             {status === "pending" &&
               match.user1_id === currentUserId && (
-                <span>Verzoek verstuurd</span>
+                <StatusText>{t("participants.requestSent")}</StatusText>
               )}
 
             {status === "accepted" && (
-              <span style={{ color: "green" }}>Buddy ✔</span>
+              <StatusText tone="success">{t("participants.buddy")}</StatusText>
             )}
-          </div>
+          </ListCard>
         )
       })}
     </div>

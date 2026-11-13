@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { Button, EmptyState, ListCard, StatusText } from "./ui"
+import { useT } from "../i18n/LanguageProvider"
+import { levelLabel } from "../i18n/labels"
 
 export default function BuddyMatches({ eventId, session, joined }) {
-  if (!joined) {
-    return null
-  }
-
-  const currentUserId = session.user.id
+  // Alle hooks staan bovenaan, vóór elke return (regel van React)
+  const currentUserId = session?.user?.id
+  const { t } = useT()
 
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState(null)
 
   useEffect(() => {
+    // Niet deelgenomen → niets laden
+    if (!joined) return
+
     const load = async () => {
       console.log("[BUDDY] load start", {
         eventId,
@@ -117,7 +122,7 @@ export default function BuddyMatches({ eventId, session, joined }) {
     }
 
     load()
-  }, [eventId, currentUserId])
+  }, [eventId, currentUserId, joined])
 
   const acceptBuddy = async (otherUserId) => {
     console.log("[BUDDY] accept clicked", {
@@ -126,6 +131,7 @@ export default function BuddyMatches({ eventId, session, joined }) {
       to: currentUserId,
     })
 
+    setMessage(null)
     const { error } = await supabase
       .from("matches")
       .update({ status: "accepted" })
@@ -135,7 +141,7 @@ export default function BuddyMatches({ eventId, session, joined }) {
 
     if (error) {
       console.error("[BUDDY] accept failed", error)
-      alert("Kon buddy-verzoek niet accepteren")
+      setMessage(t("buddies.acceptFailed"))
       return
     }
 
@@ -153,71 +159,40 @@ export default function BuddyMatches({ eventId, session, joined }) {
     )
   }
 
-  if (loading) return <p>Buddy matches laden…</p>
-  if (matches.length === 0) return <p>Geen buddy matches gevonden.</p>
+  if (!joined) return null
+  if (loading) return <StatusText>{t("buddies.loading")}</StatusText>
+  if (matches.length === 0) return <EmptyState title={t("buddies.empty")} />
 
   return (
-    <div style={{ marginTop: "20px" }}>
-      <h3>🔗 Jouw Buddy Matches</h3>
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold">{t("buddies.title")}</h2>
+
+      {message && <StatusText tone="danger">{message}</StatusText>}
 
       {matches.map((m) => {
         const isInitiator = m.user1_id === currentUserId
         const buddy = isInitiator ? m.users2 : m.users1
 
         return (
-          <div
+          <ListCard
             key={m.id}
-            style={{
-              padding: "12px",
-              marginTop: "10px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              background: "#fafafa",
-            }}
+            title={`${buddy.first_name} ${buddy.last_name}`}
+            meta={t("buddies.meta", { level: levelLabel(t, buddy.experience_level), country: buddy.country_code })}
           >
-            <strong>
-              {buddy.first_name} {buddy.last_name}
-            </strong>
-
-            <div style={{ color: "#666", fontSize: "14px" }}>
-              Niveau: {buddy.experience_level} — Land: {buddy.country_code}
-            </div>
-
             {m.status === "pending" && !isInitiator && (
-              <button
-                style={{
-                  marginTop: "8px",
-                  padding: "6px 10px",
-                  borderRadius: "6px",
-                  border: "1px solid #4A90E2",
-                  background: "white",
-                  cursor: "pointer",
-                }}
-                onClick={() => acceptBuddy(m.user1_id)}
-              >
-                Accepteer buddy
-              </button>
+              <Button size="sm" onClick={() => acceptBuddy(m.user1_id)}>
+                {t("buddies.accept")}
+              </Button>
             )}
 
             {m.status === "pending" && isInitiator && (
-              <span style={{ marginTop: "8px", display: "block" }}>
-                Verzoek verstuurd
-              </span>
+              <StatusText>{t("buddies.requestSent")}</StatusText>
             )}
 
             {m.status === "accepted" && (
-              <span
-                style={{
-                  marginTop: "8px",
-                  display: "block",
-                  color: "green",
-                  fontWeight: 500,
-                }}
-              >
-                Buddy ✔ — ga naar Chat
-              </span>
+              <StatusText tone="success">{t("buddies.accepted")}</StatusText>
             )}
-          </div>
+          </ListCard>
         )
       })}
     </div>

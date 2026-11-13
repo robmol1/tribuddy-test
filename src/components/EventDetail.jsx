@@ -4,14 +4,18 @@ import { supabase } from "../supabaseClient"
 import EventParticipants from "./EventParticipants"
 import BuddyMatches from "./BuddyMatches"
 import EventChatPanel from "./EventChatPanel"
+import { Button, Card, Checkbox, EmptyState, PageContainer, StatusText, Tabs } from "./ui"
+import { useT } from "../i18n/LanguageProvider"
 
 // TODO: BuddyMatches component komt later → alvast voorbereiden
 // import BuddyMatches from "./BuddyMatches"
 
 export default function EventDetail({ session }) {
   const { id } = useParams()
+  const { t, formatDate } = useT()
 
   const [event, setEvent] = useState(null)
+  const [joinMessage, setJoinMessage] = useState(null)
   const [joined, setJoined] = useState(false)
   const [loading, setLoading] = useState(true)
   const [buddyEnabled, setBuddyEnabled] = useState(false)
@@ -25,8 +29,10 @@ export default function EventDetail({ session }) {
       userId: session?.user?.id
     })
 
+    setJoinMessage(null)
+
     if (!session?.user) {
-      alert("Log in om mee te doen aan dit event.")
+      setJoinMessage(t("event.loginRequired"))
       return
     }
 
@@ -39,7 +45,7 @@ export default function EventDetail({ session }) {
         .maybeSingle()
 
       if (!profile) {
-        alert("Sla eerst je profiel op voordat je aan een event kunt deelnemen.")
+        setJoinMessage(t("event.profileRequired"))
         return
       }
     }
@@ -153,84 +159,67 @@ const handleBuddyToggle = async (e) => {
 }, [id, session])
 
 
-  if (loading) return <p>Evenement laden...</p>
-  if (!event) return <p>Event niet gevonden.</p>
+  if (loading) return <PageContainer><StatusText>{t("event.loading")}</StatusText></PageContainer>
+  if (!event) return <PageContainer><StatusText tone="danger">{t("event.notFound")}</StatusText></PageContainer>
+
+  const details = [
+    [t("event.date"), formatDate(event.event_date, { dateStyle: "long" })],
+    [t("event.location"), `${event.city}, ${event.country}`],
+    [t("event.organizer"), event.organizer],
+    [t("event.distance"), event.distance],
+  ]
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <h2>{event.name}</h2>
+    <PageContainer>
+      <Card className="space-y-5">
+        <h1 className="text-3xl font-extrabold tracking-tight">{event.name}</h1>
 
-      <p><strong>Datum:</strong> {event.event_date}</p>
-      <p><strong>Locatie:</strong> {event.city}, {event.country}</p>
-      <p><strong>Organisator:</strong> {event.organizer}</p>
-      <p><strong>Afstand:</strong> {event.distance}</p>
+        <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          {details.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-muted">{label}</dt>
+              <dd className="font-semibold">{value}</dd>
+            </div>
+          ))}
+        </dl>
 
-      <a href={event.website} target="_blank" rel="noopener noreferrer">
-        Officiële website
-      </a>
+        {event.website && (
+          <Button as="a" variant="link" href={event.website} target="_blank" rel="noopener noreferrer">
+            {t("event.website")} →
+          </Button>
+        )}
 
-      <hr />
+        {/* Join / Leave + buddy toggle */}
+        <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">
+          <Button variant={joined ? "outline" : "primary"} onClick={handleJoin}>
+            {joined ? t("event.leave") : t("event.join")}
+          </Button>
+
+          {joined && (
+            <Checkbox
+              label={t("event.buddyToggle")}
+              checked={buddyEnabled}
+              onChange={handleBuddyToggle}
+            />
+          )}
+        </div>
+
+        {joinMessage && <StatusText tone="danger">{joinMessage}</StatusText>}
+      </Card>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
-        <button
-          onClick={() => setActiveTab("participants")}
-          style={{
-            border: "none",
-            background: activeTab === "participants" ? "#eee" : "transparent",
-            padding: "8px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Deelnemers
-        </button>
+      <Tabs
+        className="mt-8"
+        value={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: "participants", label: t("event.tabParticipants") },
+          { id: "buddies", label: t("event.tabBuddies") },
+          { id: "chat", label: t("event.tabChat") },
+        ]}
+      />
 
-        <button
-          onClick={() => setActiveTab("buddies")}
-          style={{
-            border: "none",
-            background: activeTab === "buddies" ? "#eee" : "transparent",
-            padding: "8px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Buddy Matches
-        </button>
-
-        <button
-          onClick={() => setActiveTab("chat")}
-          style={{
-            border: "none",
-            background: activeTab === "chat" ? "#eee" : "transparent",
-            padding: "8px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Chat
-        </button>
-      </div>
-
-
-      <hr />
-
-{/* Join / Leave */}
-<button onClick={handleJoin}>
-  {joined ? "Leave Event" : "Join Event"}
-</button>
-
-{/* Buddy toggle */}
-{joined && (
-  <label style={{ display: "block", marginTop: "10px" }}>
-    <input
-  type="checkbox"
-  checked={buddyEnabled}
-  onChange={handleBuddyToggle}
-/>
-    Ik zoek een buddy voor dit event
-  </label>
-)}
-
-
+      <div className="mt-6">
       {/* TAB CONTENT */}
       {activeTab === "participants" && (
   <EventParticipants
@@ -251,7 +240,7 @@ const handleBuddyToggle = async (e) => {
 )}
 
 {activeTab === "buddies" && !joined && (
-  <p>Neem deel aan dit event om buddies te bekijken.</p>
+  <EmptyState title={t("event.joinForBuddies")} />
 )}
 
 
@@ -263,7 +252,7 @@ const handleBuddyToggle = async (e) => {
     participantsVersion={participantsVersion}
   />
 )}
-
-    </div>
+      </div>
+    </PageContainer>
   )
 }

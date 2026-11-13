@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { Button, Card, Checkbox, Field, Input, PageContainer, Select, StatusText, Textarea } from './components/ui'
+import { useT } from './i18n/LanguageProvider'
+import { LEVELS, levelLabel } from './i18n/labels'
 
 // Standaardwaarden van het formulier (sleutels = kolommen in tabel users)
 const EMPTY_FORM = {
@@ -28,23 +31,38 @@ const EMPTY_FORM = {
   show_prs_public: false
 }
 
+// [kolom, tekstsleutel]
 const PR_FIELDS = [
-  ['pr_swim_1000m', 'Zwemmen 1000 m'],
-  ['pr_bike_40km', 'Fietsen 40 km'],
-  ['pr_run_5km', 'Lopen 5 km'],
-  ['pr_run_10km', 'Lopen 10 km']
+  ['pr_swim_1000m', 'profile.prSwim1000'],
+  ['pr_bike_40km', 'profile.prBike40'],
+  ['pr_run_5km', 'profile.prRun5'],
+  ['pr_run_10km', 'profile.prRun10']
+]
+
+// [opgeslagen waarde, tekstsleutel]
+const GENDERS = [
+  ['M', 'genders.M'],
+  ['V', 'genders.V'],
+  ['-', 'genders.none']
 ]
 
 // PR-tijd als uu:mm:ss
 const PR_PATTERN = /^\d{1,2}:[0-5]\d:[0-5]\d$/
 
-const rowStyle = { display: 'block', marginTop: '8px' }
-const fieldsetStyle = { marginTop: '16px' }
+function Section({ title, children }) {
+  return (
+    <Card>
+      <h2 className="mb-5 text-lg font-bold">{title}</h2>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </Card>
+  )
+}
 
 export default function ProfileForm({ profileDirty, setProfileDirty }) {
+  const { t } = useT()
   const [form, setForm] = useState(EMPTY_FORM)
   const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState(null) // { tone, text }
 
   const updateField = (name, value) => {
     setForm((prev) => ({ ...prev, [name]: value }))
@@ -102,7 +120,7 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
       ([name]) => form[name].trim() && !PR_PATTERN.test(form[name].trim())
     )
     if (invalidPr) {
-      setStatus(`PR ${invalidPr[1]}: gebruik het formaat uu:mm:ss`)
+      setStatus({ tone: 'danger', text: t('profile.prInvalid', { label: t(invalidPr[1]) }) })
       return
     }
 
@@ -112,7 +130,7 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
     const userId = data?.user?.id
 
     if (!userId) {
-      setStatus('User not authenticated.')
+      setStatus({ tone: 'danger', text: t('profile.notAuthenticated') })
       setLoading(false)
       return
     }
@@ -143,9 +161,9 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
       })
 
     if (error) {
-      setStatus('Fout bij opslaan: ' + error.message)
+      setStatus({ tone: 'danger', text: t('profile.saveFailed', { message: error.message }) })
     } else {
-      setStatus('Profiel opgeslagen!')
+      setStatus({ tone: 'success', text: t('profile.saved') })
       setProfileDirty(false) // ✅ PROFIEL IS WEER CLEAN
     }
 
@@ -153,132 +171,119 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Mijn Profiel</h2>
+    <PageContainer>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <h1 className="text-3xl font-extrabold tracking-tight">{t('profile.title')}</h1>
 
-      <fieldset style={fieldsetStyle}>
-        <legend>Over mij</legend>
+        <Section title={t('profile.sectionAbout')}>
+          <Field label={t('profile.firstName')}>
+            <Input {...text('first_name')} required />
+          </Field>
+          <Field label={t('profile.lastName')}>
+            <Input {...text('last_name')} required />
+          </Field>
 
-        <label style={rowStyle}>
-          Voornaam: <input {...text('first_name')} required />
-        </label>
+          <Field label={t('profile.email')}>
+            <Input type="email" {...text('email')} />
+          </Field>
+          <div className="space-y-2">
+            <Field label={t('profile.birthDate')}>
+              <Input type="date" {...text('birth_date')} />
+            </Field>
+            <Checkbox label={t('profile.showBirthdate')} {...check('show_birthdate')} />
+          </div>
 
-        <label style={rowStyle}>
-          Achternaam: <input {...text('last_name')} required />
-        </label>
+          <div className="space-y-2">
+            <Field label={t('profile.gender')}>
+              <Select {...text('gender')}>
+                {GENDERS.map(([value, key]) => (
+                  <option key={value} value={value}>{t(key)}</option>
+                ))}
+              </Select>
+            </Field>
+            <Checkbox label={t('profile.showGender')} {...check('show_gender_public')} />
+          </div>
+          <Field label={t('profile.location')}>
+            <Input {...text('location')} />
+          </Field>
 
-        <label style={rowStyle}>
-          E-mail: <input type="email" {...text('email')} />
-        </label>
+          <Field label={t('profile.countryCode')}>
+            <Input {...text('country_code')} required />
+          </Field>
+          <Field label={t('profile.languages')} hint={t('profile.languagesHint')}>
+            <Input {...text('languages')} placeholder={t('profile.languagesPlaceholder')} />
+          </Field>
 
-        <label style={rowStyle}>
-          Geboortedatum: <input type="date" {...text('birth_date')} />
-        </label>
-        <label style={rowStyle}>
-          <input {...check('show_birthdate')} /> Geboortedatum tonen aan anderen
-        </label>
+          <Field label={t('profile.bio')} className="sm:col-span-2">
+            <Textarea {...text('bio')} rows={4} />
+          </Field>
 
-        <label style={rowStyle}>
-          Geslacht:{' '}
-          <select {...text('gender')}>
-            <option value="M">M</option>
-            <option value="V">V</option>
-            <option value="-">-</option>
-          </select>
-        </label>
-        <label style={rowStyle}>
-          <input {...check('show_gender_public')} /> Geslacht tonen aan anderen
-        </label>
+          <Field label={t('profile.photo')}>
+            <Input disabled placeholder={t('profile.photoLater')} />
+          </Field>
+        </Section>
 
-        <label style={rowStyle}>
-          Woonplaats: <input {...text('location')} />
-        </label>
+        <Section title={t('profile.sectionSport')}>
+          <Field label={t('profile.level')}>
+            <Select {...text('experience_level')}>
+              {LEVELS.map((level) => (
+                <option key={level} value={level}>{levelLabel(t, level)}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t('profile.preferredDistance')}>
+            <Input {...text('preferred_distance')} />
+          </Field>
+        </Section>
 
-        <label style={rowStyle}>
-          Landcode: <input {...text('country_code')} required />
-        </label>
+        <Section title={t('profile.sectionBuddy')}>
+          <Checkbox label={t('profile.openForBuddy')} {...check('open_for_buddy')} className="sm:col-span-2" />
+          <div className="space-y-3">
+            <Checkbox label={t('profile.openForTraining')} {...check('open_for_training')} />
+            <Field label={t('profile.trainingPreference')}>
+              <Input {...text('training_preference')} />
+            </Field>
+          </div>
+          <div className="space-y-3">
+            <Checkbox label={t('profile.openForTravel')} {...check('open_for_travel')} />
+            <Checkbox label={t('profile.openForAccommodation')} {...check('open_for_accommodation')} />
+          </div>
+        </Section>
 
-        <label style={rowStyle}>
-          Talen (gescheiden door komma's):{' '}
-          <input {...text('languages')} placeholder="Nederlands, Engels" />
-        </label>
+        <Section title={t('profile.sectionPrs')}>
+          {PR_FIELDS.map(([name, key]) => (
+            <Field key={name} label={t(key)}>
+              <Input {...text(name)} placeholder="00:00:00" />
+            </Field>
+          ))}
+          <Checkbox label={t('profile.showPrs')} {...check('show_prs_public')} className="sm:col-span-2" />
+        </Section>
 
-        <label style={rowStyle}>
-          Bio:
-          <br />
-          <textarea {...text('bio')} rows={4} />
-        </label>
-
-        <label style={rowStyle}>
-          Profielfoto: <input disabled placeholder="Komt later" />
-        </label>
-      </fieldset>
-
-      <fieldset style={fieldsetStyle}>
-        <legend>Sport</legend>
-
-        <label style={rowStyle}>
-          Niveau:{' '}
-          <select {...text('experience_level')}>
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-          </select>
-        </label>
-
-        <label style={rowStyle}>
-          Voorkeursafstand: <input {...text('preferred_distance')} />
-        </label>
-      </fieldset>
-
-      <fieldset style={fieldsetStyle}>
-        <legend>Buddy</legend>
-
-        <label style={rowStyle}>
-          <input {...check('open_for_buddy')} /> Ik sta open voor een buddy
-        </label>
-
-        <label style={rowStyle}>
-          <input {...check('open_for_training')} /> Samen trainen
-        </label>
-        <label style={rowStyle}>
-          Trainingsvoorkeur: <input {...text('training_preference')} />
-        </label>
-
-        <label style={rowStyle}>
-          <input {...check('open_for_travel')} /> Samen reizen
-        </label>
-
-        <label style={rowStyle}>
-          <input {...check('open_for_accommodation')} /> Verblijf delen
-        </label>
-      </fieldset>
-
-      <fieldset style={fieldsetStyle}>
-        <legend>PR's (uu:mm:ss)</legend>
-
-        {PR_FIELDS.map(([name, label]) => (
-          <label key={name} style={rowStyle}>
-            {label}: <input {...text(name)} placeholder="00:00:00" />
-          </label>
-        ))}
-
-        <label style={rowStyle}>
-          <input {...check('show_prs_public')} /> PR's tonen aan anderen
-        </label>
-      </fieldset>
-
-      {profileDirty && (
-        <p style={{ color: "#c0392b", fontSize: "0.9em" }}>
-          ⚠️ Wijzigingen zijn pas actief na opslaan
-        </p>
-      )}
-
-      <button type="submit" disabled={loading}>
-        {loading ? 'Opslaan...' : 'Profiel opslaan'}
-      </button>
-
-      {status && <p>{status}</p>}
-    </form>
+        {/* Vaste opslaanbalk — op mobiel boven de tabbalk */}
+        <div
+          className={
+            'sticky bottom-[calc(var(--height-bottom-nav)+env(safe-area-inset-bottom))] md:bottom-0 ' +
+            '-mx-4 flex items-center justify-between gap-3 border-t border-line bg-page/95 px-4 py-3 ' +
+            'backdrop-blur sm:-mx-6 sm:px-6'
+          }
+        >
+          <div className="min-w-0">
+            {status ? (
+              <StatusText tone={status.tone}>{status.text}</StatusText>
+            ) : (
+              profileDirty && (
+                <StatusText tone="danger">
+                  <span className="md:hidden">{t('profile.unsavedShort')}</span>
+                  <span className="hidden md:inline">{t('profile.unsaved')}</span>
+                </StatusText>
+              )
+            )}
+          </div>
+          <Button type="submit" disabled={loading} className="shrink-0">
+            {loading ? t('profile.saving') : t('profile.save')}
+          </Button>
+        </div>
+      </form>
+    </PageContainer>
   )
 }

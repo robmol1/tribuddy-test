@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import { Link } from "react-router-dom"
+import { Card, EmptyState, PageContainer, StatusText } from './ui'
+import { useT } from '../i18n/LanguageProvider'
 
 export default function EventsList() {
+  const { t, formatDate } = useT()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -43,28 +46,36 @@ export default function EventsList() {
     fetchEvents()
   }, [])
 
-  if (loading) return <p>Events laden...</p>
-  if (error) return <p>Fout: {error}</p>
-
   return (
-    <div>
-      <h2>TriBuddy Events</h2>
+    <PageContainer className="space-y-6">
+      <h1 className="text-3xl font-extrabold tracking-tight">{t('events.title')}</h1>
 
-      {events.length === 0 && <p>Geen events gevonden.</p>}
+      {loading && <StatusText>{t('events.loading')}</StatusText>}
+      {!loading && error && <StatusText tone="danger">{t('events.error', { message: error })}</StatusText>}
 
-      <ul>
-        {events.map(ev => (
-          <li key={ev.id}>
-            <Link to={`/events/${ev.id}`}>
-              <strong>{ev.name}</strong>
-            </Link> — {ev.city}, {ev.country}
-            <br />
-            Datum: {ev.event_date}
-            <br />
-            Organisator: {ev.organizer}
-          </li>
-        ))}
-      </ul>
-    </div>
+      {!loading && !error && events.length === 0 && <EmptyState title={t('events.empty')} />}
+
+      {!loading && !error && events.length > 0 && (
+        <ul className="space-y-3">
+          {events.map(ev => (
+            <li key={ev.id}>
+              <Card
+                as={Link}
+                to={`/events/${ev.id}`}
+                className="block p-5 transition hover:-translate-y-0.5 hover:border-link"
+              >
+                <p className="text-xs font-extrabold uppercase tracking-widest text-link">
+                  {formatDate(ev.event_date)}
+                </p>
+                <h2 className="mt-1 text-lg font-bold">{ev.name}</h2>
+                <p className="mt-1 text-sm text-muted">
+                  {ev.city}, {ev.country} · {t('events.organizer', { name: ev.organizer })}
+                </p>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PageContainer>
   )
 }

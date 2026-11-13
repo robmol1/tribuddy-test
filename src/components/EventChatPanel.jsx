@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { Button, Input, StatusText } from "./ui"
+import { useT } from "../i18n/LanguageProvider"
 
 export default function EventChatPanel({
   eventId,
@@ -7,6 +9,8 @@ export default function EventChatPanel({
   participantsVersion = 0
 }) {
   const userId = session.user.id
+  const { t } = useT()
+  const messagesRef = useRef(null)
 
   const [matches, setMatches] = useState([])
   const [activeMatch, setActiveMatch] = useState(null)
@@ -160,6 +164,12 @@ setMatches(filtered)
   }
 }, [matches, activeMatch])
 
+  // Nieuwste bericht in beeld houden
+  useEffect(() => {
+    const el = messagesRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages])
+
   /* --------------------------------------------------
      4️⃣ Send message
   -------------------------------------------------- */
@@ -184,83 +194,88 @@ setMatches(filtered)
      Render
   -------------------------------------------------- */
   return (
-    <div style={{ display: "flex", gap: "16px", marginTop: "20px" }}>
+    <div className="grid gap-6 md:grid-cols-[220px_1fr]">
       {/* Links: chatlijst */}
-      <div style={{ width: "220px", borderRight: "1px solid #ddd" }}>
-        <h3>Chats</h3>
+      <aside className="md:border-r md:border-line md:pr-4">
+        <h2 className="mb-2 text-lg font-bold">{t("chat.title")}</h2>
 
         {matches.length === 0 && (
-          <p style={{ color: "#666" }}>
-            Geen buddies om mee te chatten.
-          </p>
+          <StatusText>{t("chat.noBuddies")}</StatusText>
         )}
 
-        {matches.map((m) => (
-          <div
-            key={m.id}
-            onClick={() => setActiveMatch(m)}
-            style={{
-              padding: "8px",
-              cursor: "pointer",
-              background:
-                activeMatch?.id === m.id ? "#eef5ff" : "transparent",
-            }}
-          >
-            {buddyName(m)}
-          </div>
-        ))}
-      </div>
+        <div className="space-y-1">
+          {matches.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setActiveMatch(m)}
+              className={
+                "block w-full rounded-control px-3 py-2 text-left text-sm font-semibold transition " +
+                (activeMatch?.id === m.id
+                  ? "bg-link-soft text-link"
+                  : "text-ink hover:bg-surface")
+              }
+            >
+              {buddyName(m)}
+            </button>
+          ))}
+        </div>
+      </aside>
 
       {/* Rechts: chat */}
-      <div style={{ flex: 1 }}>
+      <section>
         {matches.length === 0 ? (
-  <p style={{ color: "#666" }}>
-    Geen actieve chats voor dit event
-  </p>
-) : !activeMatch ? (
-  <p style={{ color: "#666" }}>
-    Selecteer een buddy om te chatten
-  </p>
-) : (
-
+          <StatusText>{t("chat.noChats")}</StatusText>
+        ) : !activeMatch ? (
+          <StatusText>{t("chat.select")}</StatusText>
+        ) : (
           <>
-            <h3>{buddyName(activeMatch)}</h3>
+            <h2 className="mb-2 text-lg font-bold">{buddyName(activeMatch)}</h2>
 
             <div
-              style={{
-                minHeight: "200px",
-                border: "1px solid #ddd",
-                padding: "8px",
-                marginBottom: "8px",
-                overflowY: "auto",
-              }}
+              ref={messagesRef}
+              className="flex max-h-96 min-h-[200px] flex-col gap-2 overflow-y-auto rounded-card border border-line p-3"
             >
               {messages.length === 0 && (
-                <p style={{ color: "#999" }}>
-                  Nog geen berichten
-                </p>
+                <StatusText>{t("chat.noMessages")}</StatusText>
               )}
 
-              {messages.map((m) => (
-                <div key={m.id}>
-                  <strong>
-                    {m.sender_id === userId ? "Jij" : "Buddy"}:
-                  </strong>{" "}
-                  {m.message_text}
-                </div>
-              ))}
+              {messages.map((m) => {
+                const own = m.sender_id === userId
+                return (
+                  <div
+                    key={m.id}
+                    className={
+                      "max-w-[80%] rounded-card px-3 py-2 text-sm text-ink " +
+                      (own ? "self-end bg-link-soft" : "self-start bg-surface")
+                    }
+                  >
+                    {/* Afzender alleen voor schermlezers; links/rechts toont het visueel */}
+                    <span className="sr-only">{own ? t("chat.you") : t("chat.buddy")}: </span>
+                    {m.message_text}
+                  </div>
+                )
+              })}
             </div>
 
-            <input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Typ een bericht…"
-              style={{ width: "75%", marginRight: "6px" }}
-            />
-            <button onClick={sendMessage}>Verstuur</button>
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                sendMessage()
+              }}
+            >
+              <Input
+                className="flex-1"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder={t("chat.placeholder")}
+              />
+              <Button type="submit">{t("chat.send")}</Button>
+            </form>
           </>
         )}
-      </div>
+      </section>
     </div>
   )
 }

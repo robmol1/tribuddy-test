@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { supabase } from "./supabaseClient"
 import Dashboard from "./components/Dashboard"
-import Login from "./components/Login" // als je die hebt
+import Login from "./components/Login"
+import LandingPage from "./components/landing/LandingPage"
 
 export default function App() {
-  const [session, setSession] = useState(null)
+  // undefined = sessie wordt nog opgehaald, null = niet ingelogd
+  const [session, setSession] = useState(undefined)
 
   useEffect(() => {
     // 1. Huidige sessie ophalen
@@ -23,11 +26,22 @@ export default function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  // Niet ingelogd → toon loginpagina
-  if (!session) {
-    return <Login />
-  }
+  // Nog aan het laden → niets tonen (voorkomt dat landingspagina even zichtbaar is)
+  if (session === undefined) return null
 
-  // Ingelogd → toon dashboard + session object
-  return <Dashboard session={session} />
+  return (
+    <BrowserRouter>
+      {session ? (
+        // Ingelogd → dashboard + session object
+        <Dashboard session={session} />
+      ) : (
+        // Niet ingelogd → landingspagina en login; overige adressen naar /
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      )}
+    </BrowserRouter>
+  )
 }

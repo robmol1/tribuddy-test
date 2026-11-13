@@ -1,0 +1,44 @@
+/*
+  TriBuddy design tokens — de enige plek om kleuren, afronding en lettertype aan te passen.
+  Kleuren staan als RGB-kanalen ("R G B"), zodat Tailwind ook transparantie kan gebruiken
+  (bijv. bg-action/20). Tailwind-namen staan in tailwind.config.js.
+*/
+:root {
+  /* --- Kleurendocument (leidend) --- */
+  --color-page: 255 255 255;          /* #FFFFFF  Achtergrond */
+  --color-surface: 245 246 247;       /* #F5F6F7  Kaarten en vlakken */
+  --color-ink: 31 41 51;              /* #1F2933  Primaire tekst, tekst op oranje knoppen */
+  --color-muted: 102 112 133;         /* #667085  Secundaire tekst */
+  --color-link: 31 111 235;           /* #1F6FEB  Blauw accent: links, geselecteerde navigatie */
+  --color-action: 255 111 60;         /* #FF6F3C  Actieaccent: primaire knoppen, highlights */
+  --color-success: 33 136 56;         /* #218838  Alleen bevestigingen en geslaagde acties */
+
+  /* --- Aanvulling (niet in kleurendocument; overgenomen uit preview v3) --- */
+  --color-navy: 20 40 59;             /* #14283B  Donkere vlakken */
+  --color-line: 227 232 237;          /* #E3E8ED  Randen en scheidingslijnen */
+  --color-link-soft: 237 244 255;     /* #EDF4FF  Lichte blauwe tint (badges, iconvlakken) */
+  --color-action-hover: 255 131 87;   /* #FF8357  Hover op primaire knop */
+  --color-danger: 192 57 43;          /* #C0392B  Fouten en waarschuwingen */
+  --color-on-dark: 255 255 255;       /* #FFFFFF  Tekst op donkere vlakken */
+  --color-on-dark-muted: 209 219 227; /* #D1DBE3  Secundaire tekst op donkere vlakken */
+  --color-on-dark-accent: 255 183 158;/* #FFB79E  Oranje accent op donkere vlakken */
+  --color-on-dark-link: 169 200 255;  /* #A9C8FF  Blauw accent op donkere vlakken */
+
+  /* --- Verlopen (aanvulling, overgenomen uit preview v3) --- */
+  --overlay-hero: linear-gradient(90deg, rgb(9 22 34 / 0.77) 0%, rgb(9 22 34 / 0.47) 48%, rgb(9 22 34 / 0.06) 100%),
+    linear-gradient(0deg, rgb(9 22 34 / 0.25), transparent 50%); /* donkere laag over herofoto */
+  --gradient-feature: linear-gradient(145deg, #17314a, #244764);           /* uitgelichte verhaalkaart */
+  --gradient-finish: linear-gradient(110deg, #14283b 0%, #1d405d 52%, #344f68 100%); /* afsluiter */
+
+  /* --- Vorm --- */
+  --radius-control: 8px;   /* invoervelden, kleine knoppen */
+  --radius-button: 10px;   /* knoppen */
+  --radius-card: 16px;     /* kaarten en panelen */
+
+  /* --- Lettertype (systeem-sans-serif, geen webfont) --- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* --- Maten --- */
+  --width-shell: 1240px;      /* maximale paginabreedte */
+  --height-bottom-nav: 60px;  /* mobiele tabbalk; vaste balken erboven gebruiken deze maat */
+}
