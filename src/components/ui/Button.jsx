@@ -9,6 +9,8 @@ const VARIANTS = {
     "rounded-button bg-action text-ink shadow-cta hover:bg-action-hover enabled:hover:-translate-y-0.5",
   secondary: "rounded-button bg-surface text-ink border border-line hover:bg-line",
   outline: "rounded-button bg-page text-ink border border-line hover:bg-surface",
+  // Rood: alleen voor onomkeerbare acties, bijv. de bevestigknop in ConfirmDialog
+  danger: "rounded-button bg-danger text-on-dark hover:bg-danger/90",
   // Voor gebruik op donkere (navy) vlakken
   "outline-dark": "rounded-button text-on-dark border border-on-dark/50 hover:bg-on-dark/10",
   link: "text-link hover:underline",
