@@ -27,18 +27,6 @@ export default function EventsList() {
         return
       }
 
-      console.log("📦 Events ontvangen:", data)
-
-      // 🔍 Debug alle datums
-      data.forEach((e) =>
-        console.log(
-          '📅 Event:',
-          e.name,
-          '| event_date:', e.event_date,
-          '| typeof:', typeof e.event_date
-        )
-      )
-
       setEvents(data)
       setLoading(false)
     }

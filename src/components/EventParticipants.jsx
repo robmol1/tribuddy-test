@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { fetchPublicProfiles } from "../publicProfiles"
 import { Button, EmptyState, ListCard, StatusText, UserIcon } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 import { levelLabel } from "../i18n/labels"
@@ -24,18 +25,7 @@ export default function EventParticipants({ eventId, session, joined }) {
       const { data: participantData, error: participantError } =
         await supabase
           .from("user_events")
-          .select(`
-            user_id,
-            buddy_enabled,
-            users (
-              id,
-              first_name,
-              last_name,
-              country_code,
-              experience_level
-            )
-          `)
-
+          .select("user_id, buddy_enabled")
           .eq("event_id", eventId)
           .neq("user_id", currentUserId)
 
@@ -45,7 +35,17 @@ export default function EventParticipants({ eventId, session, joined }) {
         return
       }
 
-      setParticipants(participantData || [])
+      const profiles = await fetchPublicProfiles(
+        (participantData || []).map((p) => p.user_id),
+        "first_name,last_name,country_code,experience_level"
+      )
+
+      setParticipants(
+        (participantData || []).map((p) => ({
+          ...p,
+          users: profiles.get(p.user_id) || {},
+        }))
+      )
 
       // 2️⃣ Alle matches voor dit event
       const { data: matchData, error: matchError } = await supabase

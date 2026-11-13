@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { fetchPublicProfiles } from "../publicProfiles"
 import { Button, EmptyState, ListCard, StatusText } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 import { levelLabel } from "../i18n/labels"
@@ -18,27 +19,11 @@ export default function BuddyMatches({ eventId, session, joined }) {
     if (!joined) return
 
     const load = async () => {
-      console.log("[BUDDY] load start", {
-        eventId,
-        userId: currentUserId,
-      })
-
       setLoading(true)
 
       const { data, error } = await supabase
         .from("matches")
-        .select(`
-          id,
-          user1_id,
-          user2_id,
-          status,
-          users1:users!matches_user1_id_fkey(
-            first_name,last_name,country_code,experience_level
-          ),
-          users2:users!matches_user2_id_fkey(
-            first_name,last_name,country_code,experience_level
-          )
-        `)
+        .select("id, user1_id, user2_id, status")
         .eq("event_id", eventId)
         .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
 
@@ -47,10 +32,6 @@ export default function BuddyMatches({ eventId, session, joined }) {
         setLoading(false)
         return
       }
-
-      console.log("[BUDDY] matches loaded (raw)", {
-        count: data?.length ?? 0,
-      })
 
       // accepted wint altijd (per buddy)
       const byBuddy = new Map()
@@ -72,10 +53,6 @@ export default function BuddyMatches({ eventId, session, joined }) {
       }
 
       const deduped = Array.from(byBuddy.values())
-
-      console.log("[BUDDY] deduped matches", {
-        count: deduped.length,
-      })
 
       // 🔎 Check wie nog actief deelnemer is aan dit event
       const userIdsToCheck = Array.from(
@@ -112,12 +89,18 @@ export default function BuddyMatches({ eventId, session, joined }) {
         )
       })
 
-      console.log("[BUDDY] matches after filter", {
-        before: deduped.length,
-        after: filtered.length,
-      })
+      const profiles = await fetchPublicProfiles(
+        filtered.flatMap((m) => [m.user1_id, m.user2_id]),
+        "first_name,last_name,country_code,experience_level"
+      )
 
-      setMatches(filtered)
+      setMatches(
+        filtered.map((m) => ({
+          ...m,
+          users1: profiles.get(m.user1_id) || {},
+          users2: profiles.get(m.user2_id) || {},
+        }))
+      )
       setLoading(false)
     }
 
@@ -125,12 +108,6 @@ export default function BuddyMatches({ eventId, session, joined }) {
   }, [eventId, currentUserId, joined])
 
   const acceptBuddy = async (otherUserId) => {
-    console.log("[BUDDY] accept clicked", {
-      eventId,
-      from: otherUserId,
-      to: currentUserId,
-    })
-
     setMessage(null)
     const { error } = await supabase
       .from("matches")
@@ -144,11 +121,6 @@ export default function BuddyMatches({ eventId, session, joined }) {
       setMessage(t("buddies.acceptFailed"))
       return
     }
-
-    console.log("[BUDDY] accept success", {
-      eventId,
-      buddyId: otherUserId,
-    })
 
     setMatches((prev) =>
       prev.map((m) =>

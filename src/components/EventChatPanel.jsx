@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { supabase } from "../supabaseClient"
+import { fetchPublicProfiles } from "../publicProfiles"
 import { Button, Input, StatusText } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 
@@ -9,7 +10,7 @@ export default function EventChatPanel({
   participantsVersion = 0
 }) {
   const userId = session.user.id
-  const { t } = useT()
+  const { t, formatDate } = useT()
   const messagesRef = useRef(null)
 
   const [matches, setMatches] = useState([])
@@ -64,14 +65,7 @@ useEffect(() => {
     const loadMatches = async () => {
       const { data, error } = await supabase
         .from("matches")
-        .select(`
-          id,
-          user1_id,
-          user2_id,
-          status,
-          users1:users!matches_user1_id_fkey(first_name,last_name),
-          users2:users!matches_user2_id_fkey(first_name,last_name)
-        `)
+        .select("id, user1_id, user2_id, status")
         .eq("event_id", eventId)
         .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
 
@@ -98,7 +92,18 @@ useEffect(() => {
   )
 })
 
-setMatches(filtered)
+      const profiles = await fetchPublicProfiles(
+        filtered.flatMap((m) => [m.user1_id, m.user2_id]),
+        "first_name,last_name"
+      )
+
+      setMatches(
+        filtered.map((m) => ({
+          ...m,
+          users1: profiles.get(m.user1_id) || {},
+          users2: profiles.get(m.user2_id) || {},
+        }))
+      )
 
     }
 
@@ -108,26 +113,7 @@ setMatches(filtered)
 
 
   /* --------------------------------------------------
-     2️⃣ Load messages for selected match
-  -------------------------------------------------- */
-  useEffect(() => {
-    if (!activeMatch) return
-
-    const loadMessages = async () => {
-      const { data } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("match_id", activeMatch.id)
-        .order("timestamp", { ascending: true })
-
-      setMessages(data || [])
-    }
-
-    loadMessages()
-  }, [activeMatch?.id])
-
-  /* --------------------------------------------------
-     3️⃣ Realtime updates
+     2️⃣ Realtime updates
   -------------------------------------------------- */
   useEffect(() => {
     if (!activeMatch) return
@@ -171,7 +157,7 @@ setMatches(filtered)
   }, [messages])
 
   /* --------------------------------------------------
-     4️⃣ Send message
+     3️⃣ Send message
   -------------------------------------------------- */
   const sendMessage = async () => {
     if (!newMessage.trim() || !activeMatch) return
@@ -183,6 +169,19 @@ setMatches(filtered)
     })
 
     setNewMessage("")
+  }
+
+  // Vandaag: alleen tijd ("14:32"); eerder: datum + tijd ("12 nov, 14:32")
+  const messageTime = (value) => {
+    if (!value) return ""
+    const sent = new Date(value)
+    const today = sent.toDateString() === new Date().toDateString()
+    return formatDate(
+      sent,
+      today
+        ? { hour: "2-digit", minute: "2-digit" }
+        : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }
+    )
   }
 
   const buddyName = (m) => {
@@ -253,6 +252,14 @@ setMatches(filtered)
                     {/* Afzender alleen voor schermlezers; links/rechts toont het visueel */}
                     <span className="sr-only">{own ? t("chat.you") : t("chat.buddy")}: </span>
                     {m.message_text}
+                    {m.timestamp && (
+                      <time
+                        dateTime={m.timestamp}
+                        className="mt-1 block text-right text-xs text-muted"
+                      >
+                        {messageTime(m.timestamp)}
+                      </time>
+                    )}
                   </div>
                 )
               })}

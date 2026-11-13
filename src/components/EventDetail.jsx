@@ -7,6 +7,16 @@ import EventChatPanel from "./EventChatPanel"
 import { Button, Card, Checkbox, EmptyState, PageContainer, StatusText, Tabs } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 
+// Alleen http(s)-links toestaan; bijvoorbeeld javascript: wordt geweigerd.
+function safeWebsite(value) {
+  try {
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null
+  } catch {
+    return null
+  }
+}
+
 // TODO: BuddyMatches component komt later → alvast voorbereiden
 // import BuddyMatches from "./BuddyMatches"
 
@@ -23,12 +33,6 @@ export default function EventDetail({ session }) {
   const [participantsVersion, setParticipantsVersion] = useState(0)
 
   const handleJoin = async () => {
-    console.log("[EVENT] join button clicked", {
-      action: joined ? "leave" : "join",
-      eventId: id,
-      userId: session?.user?.id
-    })
-
     setJoinMessage(null)
 
     if (!session?.user) {
@@ -60,7 +64,6 @@ export default function EventDetail({ session }) {
         })
 
       if (!error) {
-        console.log("[EVENT] joined", { eventId: id })
         setJoined(true)
         setParticipantsVersion(v => v + 1)
       }
@@ -72,7 +75,6 @@ export default function EventDetail({ session }) {
         .eq("event_id", id)
 
       if (!error) {
-        console.log("[EVENT] left", { eventId: id })
         setJoined(false)
         setParticipantsVersion(v => v + 1)
       }
@@ -81,12 +83,6 @@ export default function EventDetail({ session }) {
 
 const handleBuddyToggle = async (e) => {
   const newValue = e.target.checked
-
-  console.log("[EVENT] buddy toggle clicked", {
-    eventId: id,
-    userId: session.user.id,
-    enabled: newValue
-  })
 
   setBuddyEnabled(newValue)
 
@@ -100,22 +96,12 @@ const handleBuddyToggle = async (e) => {
     console.error("[EVENT] buddy toggle failed", error)
     // rollback UI
     setBuddyEnabled(!newValue)
-  } else {
-    console.log("[EVENT] buddy toggle saved", {
-      eventId: id,
-      enabled: newValue
-    })
   }
 }
 
 
   useEffect(() => {
   const loadEvent = async () => {
-    console.log("[EVENT] load start", {
-      eventId: id,
-      userId: session?.user?.id
-    })
-
     const { data, error } = await supabase
       .from("events")
       .select("*")
@@ -130,11 +116,6 @@ const handleBuddyToggle = async (e) => {
 
     setEvent(data)
 
-    console.log("[EVENT] loaded", {
-      eventId: data.id,
-      name: data.name
-    })
-
     if (session?.user) {
       const { data: joinData } = await supabase
         .from("user_events")
@@ -145,11 +126,6 @@ const handleBuddyToggle = async (e) => {
 
       setJoined(!!joinData)
       setBuddyEnabled(joinData?.buddy_enabled ?? false)
-
-      console.log("[EVENT] join status", {
-        joined: !!joinData,
-        buddyEnabled: joinData?.buddy_enabled ?? false
-      })
     }
 
     setLoading(false)
@@ -183,8 +159,8 @@ const handleBuddyToggle = async (e) => {
           ))}
         </dl>
 
-        {event.website && (
-          <Button as="a" variant="link" href={event.website} target="_blank" rel="noopener noreferrer">
+        {safeWebsite(event.website) && (
+          <Button as="a" variant="link" href={safeWebsite(event.website)} target="_blank" rel="noopener noreferrer">
             {t("event.website")} →
           </Button>
         )}

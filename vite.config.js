@@ -7,11 +7,14 @@ const commit = (process.env.VERCEL_GIT_COMMIT_SHA ||
   (() => { try { return execSync('git rev-parse HEAD').toString() } catch { return 'dev' } })()
 ).trim().slice(0, 7)
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT__: JSON.stringify(commit),
     __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
-})
+  // Debug-logs (console.log) alleen tijdens npm run dev; de productie-build haalt ze weg.
+  // console.error blijft staan.
+  esbuild: command === 'build' ? { pure: ['console.log'] } : {},
+}))
