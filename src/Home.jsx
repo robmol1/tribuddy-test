@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom"
 import { Card, PageContainer, CalendarIcon, UserIcon } from "./components/ui"
 import { useT } from "./i18n/LanguageProvider"
+import MyEvents from "./components/MyEvents"
 
 function ShortcutCard({ to, icon, title, text }) {
   return (
@@ -44,6 +45,11 @@ export default function Home({ session }) {
           text={t("home.profileText")}
         />
       </div>
+
+      <section className="space-y-4">
+        <h2 className="text-2xl font-extrabold tracking-tight">{t("myEvents.title")}</h2>
+        <MyEvents session={session} />
+      </section>
     </PageContainer>
   )
 }

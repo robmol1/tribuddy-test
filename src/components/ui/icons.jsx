@@ -43,3 +43,11 @@ export function UserIcon(props) {
     </Icon>
   )
 }
+
+export function ShieldIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6l-8-3Z" />
+    </Icon>
+  )
+}

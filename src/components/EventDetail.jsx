@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import { supabase } from "../supabaseClient"
 import EventParticipants from "./EventParticipants"
 import BuddyMatches from "./BuddyMatches"
 import EventChatPanel from "./EventChatPanel"
+import DistanceChips from "./DistanceChips"
+import { EVENT_CATEGORIES_SELECT } from "../distanceCategories"
 import { Button, Card, Checkbox, EmptyState, PageContainer, StatusText, Tabs } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 
@@ -104,7 +106,7 @@ const handleBuddyToggle = async (e) => {
   const loadEvent = async () => {
     const { data, error } = await supabase
       .from("events")
-      .select("*")
+      .select(`*, ${EVENT_CATEGORIES_SELECT}`)
       .eq("id", id)
       .single()
 
@@ -136,7 +138,21 @@ const handleBuddyToggle = async (e) => {
 
 
   if (loading) return <PageContainer><StatusText>{t("event.loading")}</StatusText></PageContainer>
-  if (!event) return <PageContainer><StatusText tone="danger">{t("event.notFound")}</StatusText></PageContainer>
+  // Terug naar de wedstrijdenlijst (altijd /events, ook als je via Home kwam)
+  const backLink = (
+    <Button as={Link} to="/events" variant="link" className="mb-4">
+      ← {t("event.backToEvents")}
+    </Button>
+  )
+
+  if (!event) {
+    return (
+      <PageContainer>
+        {backLink}
+        <StatusText tone="danger">{t("event.notFound")}</StatusText>
+      </PageContainer>
+    )
+  }
 
   const details = [
     [t("event.date"), formatDate(event.event_date, { dateStyle: "long" })],
@@ -147,6 +163,7 @@ const handleBuddyToggle = async (e) => {
 
   return (
     <PageContainer>
+      {backLink}
       <Card className="space-y-5">
         <h1 className="text-3xl font-extrabold tracking-tight">{event.name}</h1>
 
@@ -158,6 +175,8 @@ const handleBuddyToggle = async (e) => {
             </div>
           ))}
         </dl>
+
+        <DistanceChips event={event} />
 
         {safeWebsite(event.website) && (
           <Button as="a" variant="link" href={safeWebsite(event.website)} target="_blank" rel="noopener noreferrer">

@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { Button, Card, Checkbox, Field, Input, PageContainer, Select, StatusText, Textarea } from './components/ui'
+import {
+  Button, Card, Checkbox, ConfirmDialog, Field, Input, PageContainer, Select, StatusText, Textarea,
+} from './components/ui'
 import { useT } from './i18n/LanguageProvider'
-import { LEVELS, levelLabel } from './i18n/labels'
+import BlockedUsers from './components/BlockedUsers'
+import LanguageStickers from './components/LanguageSticker'
+import { fetchUserLanguages, saveMyLanguages } from './languages'
+import { GENDER_UNSPECIFIED, useMasterData } from './masterData'
+
+// Velden die pas bestaan na een SQL-script (punt 9: privacy-safety.sql, punt 3: languages.sql).
+// Zonder die kolommen worden ze niet getoond en niet opgeslagen.
+const OPTIONAL_FIELDS = ['is_hidden', 'visible_to', 'buddy_gender_pref']
 
 // Standaardwaarden van het formulier (sleutels = kolommen in tabel users)
 const EMPTY_FORM = {
@@ -15,7 +24,6 @@ const EMPTY_FORM = {
   show_gender_public: true,
   location: '',
   country_code: 'NL',
-  languages: '',
   bio: '',
   experience_level: 'beginner',
   preferred_distance: '',
@@ -28,7 +36,10 @@ const EMPTY_FORM = {
   pr_bike_40km: '',
   pr_run_5km: '',
   pr_run_10km: '',
-  show_prs_public: false
+  show_prs_public: false,
+  is_hidden: false,
+  visible_to: 'all',
+  buddy_gender_pref: 'any'
 }
 
 // [kolom, tekstsleutel]
@@ -37,13 +48,6 @@ const PR_FIELDS = [
   ['pr_bike_40km', 'profile.prBike40'],
   ['pr_run_5km', 'profile.prRun5'],
   ['pr_run_10km', 'profile.prRun10']
-]
-
-// [opgeslagen waarde, tekstsleutel]
-const GENDERS = [
-  ['M', 'genders.M'],
-  ['V', 'genders.V'],
-  ['-', 'genders.none']
 ]
 
 // PR-tijd als uu:mm:ss
@@ -58,14 +62,50 @@ function Section({ title, children }) {
   )
 }
 
-export default function ProfileForm({ profileDirty, setProfileDirty }) {
+export default function ProfileForm({ session, profileDirty, setProfileDirty }) {
   const { t } = useT()
+  const { active, label } = useMasterData()
+  const [supportedFields, setSupportedFields] = useState(new Set(OPTIONAL_FIELDS))
+  const privacySupported = supportedFields.has('is_hidden') && supportedFields.has('visible_to')
+  const genderPrefSupported = supportedFields.has('buddy_gender_pref')
+  const allLanguages = active('languages').map((l) => l.code) // leeg = tabel nog niet geladen
+  const genders = active('genders')
+  const realGenders = genders.filter((g) => g.code !== GENDER_UNSPECIFIED) // voor filter-achtige keuzes
+  const [myLanguages, setMyLanguages] = useState([])
   const [form, setForm] = useState(EMPTY_FORM)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState(null) // { tone, text }
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteFailed, setDeleteFailed] = useState(false)
+
+  // Account verwijderen = vlag is_deleted zetten (functie delete_my_account), daarna uitloggen
+  const handleDeleteAccount = async () => {
+    setDeleting(true)
+    setDeleteFailed(false)
+
+    const { error } = await supabase.rpc('delete_my_account')
+
+    if (error) {
+      console.error('[ACCOUNT] delete failed', error)
+      setDeleting(false)
+      setConfirmDelete(false)
+      setDeleteFailed(true)
+      return
+    }
+
+    console.info('[ACCOUNT] account marked as deleted')
+    await supabase.auth.signOut()
+    window.location.assign('/')
+  }
 
   const updateField = (name, value) => {
     setForm((prev) => ({ ...prev, [name]: value }))
+    setProfileDirty(true)
+  }
+
+  const toggleLanguage = (code) => {
+    setMyLanguages((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
     setProfileDirty(true)
   }
 
@@ -99,14 +139,18 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
       }
 
       if (data) {
+        setSupportedFields(new Set(OPTIONAL_FIELDS.filter((key) => key in data)))
         const loaded = {}
         for (const key of Object.keys(EMPTY_FORM)) {
           loaded[key] = data[key] ?? EMPTY_FORM[key]
         }
-        loaded.languages = (data.languages || []).join(', ')
         setForm(loaded)
         setProfileDirty(false) // 🔥 BELANGRIJK: geladen data = clean
       }
+
+      // Eigen talen (punt 3); de lijst met talen komt uit de stamtabel
+      const mine = await fetchUserLanguages([userId])
+      setMyLanguages(mine?.get(userId) ?? [])
     }
 
     loadProfile()
@@ -146,11 +190,9 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
       }
     }
 
-    const languages = form.languages
-      .split(',')
-      .map((l) => l.trim())
-      .filter(Boolean)
-    payload.languages = languages.length ? languages : null
+    for (const key of OPTIONAL_FIELDS) {
+      if (!supportedFields.has(key)) delete payload[key]
+    }
 
     const { error } = await supabase
       .from('users')
@@ -160,8 +202,14 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
         updated_at: new Date().toISOString()
       })
 
+    // Talen apart opslaan (koppeltabel), pas nadat het profiel bestaat
+    const languagesSaved =
+      error || allLanguages.length === 0 ? true : await saveMyLanguages(userId, myLanguages)
+
     if (error) {
       setStatus({ tone: 'danger', text: t('profile.saveFailed', { message: error.message }) })
+    } else if (!languagesSaved) {
+      setStatus({ tone: 'danger', text: t('profile.languagesSaveFailed') })
     } else {
       setStatus({ tone: 'success', text: t('profile.saved') })
       setProfileDirty(false) // ✅ PROFIEL IS WEER CLEAN
@@ -196,8 +244,8 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
           <div className="space-y-2">
             <Field label={t('profile.gender')}>
               <Select {...text('gender')}>
-                {GENDERS.map(([value, key]) => (
-                  <option key={value} value={value}>{t(key)}</option>
+                {genders.map((g) => (
+                  <option key={g.code} value={g.code}>{label('genders', g.code)}</option>
                 ))}
               </Select>
             </Field>
@@ -210,9 +258,27 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
           <Field label={t('profile.countryCode')}>
             <Input {...text('country_code')} required />
           </Field>
-          <Field label={t('profile.languages')} hint={t('profile.languagesHint')}>
-            <Input {...text('languages')} placeholder={t('profile.languagesPlaceholder')} />
-          </Field>
+          {allLanguages.length > 0 && (
+            <div className="space-y-2">
+              {/* Keuzelijst zonder de al gekozen talen; na kiezen terug op "Taal toevoegen…" */}
+              <Field label={t('profile.languages')} hint={t('profile.languagesHint')}>
+                <Select
+                  value=""
+                  onChange={(e) => e.target.value && toggleLanguage(e.target.value)}
+                >
+                  <option value="">{t('profile.languageAdd')}</option>
+                  {allLanguages.filter((c) => !myLanguages.includes(c)).map((code) => (
+                    <option key={code} value={code}>{label('languages', code)}</option>
+                  ))}
+                </Select>
+              </Field>
+              {myLanguages.length > 0 ? (
+                <LanguageStickers codes={myLanguages} onRemove={toggleLanguage} />
+              ) : (
+                <p className="text-xs text-muted">{t('profile.languagesNone')}</p>
+              )}
+            </div>
+          )}
 
           <Field label={t('profile.bio')} className="sm:col-span-2">
             <Textarea {...text('bio')} rows={4} />
@@ -226,8 +292,8 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
         <Section title={t('profile.sectionSport')}>
           <Field label={t('profile.level')}>
             <Select {...text('experience_level')}>
-              {LEVELS.map((level) => (
-                <option key={level} value={level}>{levelLabel(t, level)}</option>
+              {active('levels').map((level) => (
+                <option key={level.code} value={level.code}>{label('levels', level.code)}</option>
               ))}
             </Select>
           </Field>
@@ -237,7 +303,24 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
         </Section>
 
         <Section title={t('profile.sectionBuddy')}>
-          <Checkbox label={t('profile.openForBuddy')} {...check('open_for_buddy')} className="sm:col-span-2" />
+          <div className="space-y-1 sm:col-span-2">
+            <Checkbox label={t('profile.openForBuddy')} {...check('open_for_buddy')} />
+            <p className="text-xs text-muted">{t('privacy.openForBuddyHint')}</p>
+          </div>
+          {genderPrefSupported && (
+            <Field
+              label={t('profile.buddyGenderPref')}
+              hint={t('profile.buddyGenderPrefHint')}
+              className="sm:col-span-2"
+            >
+              <Select {...text('buddy_gender_pref')}>
+                <option value="any">{t('profile.buddyGenderAny')}</option>
+                {realGenders.map((g) => (
+                  <option key={g.code} value={g.code}>{label('genders', g.code)}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <div className="space-y-3">
             <Checkbox label={t('profile.openForTraining')} {...check('open_for_training')} />
             <Field label={t('profile.trainingPreference')}>
@@ -258,6 +341,29 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
           ))}
           <Checkbox label={t('profile.showPrs')} {...check('show_prs_public')} className="sm:col-span-2" />
         </Section>
+
+        {privacySupported && (
+          <Section title={t('privacy.title')}>
+            <div className="space-y-1 sm:col-span-2">
+              <Checkbox label={t('privacy.hidden')} {...check('is_hidden')} />
+              <p className="text-xs text-muted">{t('privacy.hiddenHint')}</p>
+            </div>
+            <Field
+              label={t('privacy.visibleTo')}
+              hint={form.visible_to !== 'all' ? t('privacy.visibleToHint') : undefined}
+              className="sm:col-span-2"
+            >
+              <Select {...text('visible_to')}>
+                <option value="all">{t('privacy.visibleAll')}</option>
+                {realGenders.map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {t('privacy.visibleOnly', { name: label('genders', g.code) })}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </Section>
+        )}
 
         {/* Vaste opslaanbalk — op mobiel boven de tabbalk */}
         <div
@@ -284,6 +390,34 @@ export default function ProfileForm({ profileDirty, setProfileDirty }) {
           </Button>
         </div>
       </form>
+
+      {/* Geblokkeerde gebruikers */}
+      <Card className="mt-10 space-y-3">
+        <h2 className="text-lg font-bold">{t('safety.blockedTitle')}</h2>
+        <BlockedUsers userId={session?.user?.id} />
+      </Card>
+
+      {/* Account verwijderen */}
+      <Card className="mt-6 space-y-3 border-danger/40">
+        <h2 className="text-lg font-bold">{t('account.deleteTitle')}</h2>
+        <p className="text-sm text-muted">{t('account.deleteIntro')}</p>
+        {deleteFailed && <StatusText tone="danger">{t('account.deleteFailed')}</StatusText>}
+        <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+          {t('account.deleteButton')}
+        </Button>
+      </Card>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('account.confirmTitle')}
+        confirmLabel={deleting ? t('account.deleting') : t('account.confirm')}
+        cancelLabel={t('match.cancel')}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setConfirmDelete(false)}
+        busy={deleting}
+      >
+        {t('account.confirmText')}
+      </ConfirmDialog>
     </PageContainer>
   )
 }

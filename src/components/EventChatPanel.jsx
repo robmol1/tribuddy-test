@@ -3,6 +3,8 @@ import { supabase } from "../supabaseClient"
 import { fetchPublicProfiles } from "../publicProfiles"
 import { Button, Input, StatusText } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
+import ReportDialog from "./ReportDialog"
+import { fetchBlockingMe, fetchMyBlocks } from "../safety"
 
 export default function EventChatPanel({
   eventId,
@@ -18,7 +20,24 @@ export default function EventChatPanel({
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
   const [activeParticipants, setActiveParticipants] = useState([])
-  
+  const [myBlocks, setMyBlocks] = useState(new Set())       // wie ik heb geblokkeerd
+  const [blockingMe, setBlockingMe] = useState(new Set())   // wie mij heeft geblokkeerd
+  const [sendFailed, setSendFailed] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [reportTarget, setReportTarget] = useState(null)    // { userId, name, chatMessageId }
+
+  // Blokkades in beide richtingen (chat op slot bij een blokkade)
+  useEffect(() => {
+    Promise.all([fetchMyBlocks(userId), fetchBlockingMe()]).then(([mine, againstMe]) => {
+      setMyBlocks(mine)
+      setBlockingMe(againstMe)
+    })
+  }, [userId, participantsVersion])
+
+  useEffect(() => {
+    setSendFailed(false)
+  }, [activeMatch?.id])
+
 useEffect(() => {
   if (!activeMatch) {
     setMessages([])
@@ -97,12 +116,21 @@ useEffect(() => {
         "first_name,last_name"
       )
 
+      if (!profiles) {
+        setLoadFailed(true)
+        return
+      }
+      setLoadFailed(false)
+
+      // Chats met een buddy zonder zichtbaar profiel (bijv. verwijderd account) vallen weg
       setMatches(
-        filtered.map((m) => ({
-          ...m,
-          users1: profiles.get(m.user1_id) || {},
-          users2: profiles.get(m.user2_id) || {},
-        }))
+        filtered
+          .filter((m) => profiles.has(m.user1_id === userId ? m.user2_id : m.user1_id))
+          .map((m) => ({
+            ...m,
+            users1: profiles.get(m.user1_id) || {},
+            users2: profiles.get(m.user2_id) || {},
+          }))
       )
 
     }
@@ -161,15 +189,27 @@ useEffect(() => {
   -------------------------------------------------- */
   const sendMessage = async () => {
     if (!newMessage.trim() || !activeMatch) return
+    setSendFailed(false)
 
-    await supabase.from("chat_messages").insert({
+    const { error } = await supabase.from("chat_messages").insert({
       match_id: activeMatch.id,
       sender_id: userId,
       message_text: newMessage,
     })
 
+    if (error) {
+      console.error("[CHAT] send failed", error)
+      setSendFailed(true)
+      return
+    }
+
     setNewMessage("")
   }
+
+  const buddyIdOfMatch = (m) => (m.user1_id === userId ? m.user2_id : m.user1_id)
+  const activeBuddyId = activeMatch ? buddyIdOfMatch(activeMatch) : null
+  const iBlocked = !!activeBuddyId && myBlocks.has(activeBuddyId)
+  const blockedMe = !!activeBuddyId && blockingMe.has(activeBuddyId)
 
   // Vandaag: alleen tijd ("14:32"); eerder: datum + tijd ("12 nov, 14:32")
   const messageTime = (value) => {
@@ -197,6 +237,10 @@ useEffect(() => {
       {/* Links: chatlijst */}
       <aside className="md:border-r md:border-line md:pr-4">
         <h2 className="mb-2 text-lg font-bold">{t("chat.title")}</h2>
+
+        {loadFailed && (
+          <StatusText tone="danger" className="mb-2">{t("common.profilesFailed")}</StatusText>
+        )}
 
         {matches.length === 0 && (
           <StatusText>{t("chat.noBuddies")}</StatusText>
@@ -260,29 +304,60 @@ useEffect(() => {
                         {messageTime(m.timestamp)}
                       </time>
                     )}
+                    {!own && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReportTarget({
+                            userId: m.sender_id,
+                            name: buddyName(activeMatch),
+                            chatMessageId: m.id,
+                          })
+                        }
+                        className="mt-1 block text-xs text-muted underline-offset-2 hover:text-danger hover:underline"
+                      >
+                        {t("report.reportMessage")}
+                      </button>
+                    )}
                   </div>
                 )
               })}
             </div>
 
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault()
-                sendMessage()
-              }}
-            >
-              <Input
-                className="flex-1"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={t("chat.placeholder")}
-              />
-              <Button type="submit">{t("chat.send")}</Button>
-            </form>
+            {iBlocked || blockedMe ? (
+              // Chat op slot bij een blokkade; wie geblokkeerd is krijgt een algemene melding
+              <StatusText className="mt-3">
+                {iBlocked ? t("chat.lockedByYou") : t("chat.locked")}
+              </StatusText>
+            ) : (
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendMessage()
+                }}
+              >
+                <Input
+                  className="flex-1"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder={t("chat.placeholder")}
+                />
+                <Button type="submit">{t("chat.send")}</Button>
+              </form>
+            )}
+            {sendFailed && <StatusText tone="danger" className="mt-2">{t("chat.sendFailed")}</StatusText>}
           </>
         )}
       </section>
+
+      <ReportDialog
+        target={reportTarget}
+        reporterId={userId}
+        onClose={() => setReportTarget(null)}
+        alreadyBlocked={!!reportTarget && myBlocks.has(reportTarget.userId)}
+        onBlocked={(id) => setMyBlocks((prev) => new Set(prev).add(id))}
+      />
     </div>
   )
 }

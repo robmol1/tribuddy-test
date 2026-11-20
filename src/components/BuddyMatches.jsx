@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient"
 import { fetchPublicProfiles } from "../publicProfiles"
 import { EmptyState, ListCard, StatusText } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
-import { levelLabel } from "../i18n/labels"
+import { useMasterData } from "../masterData"
 import { buddyIdOf, matchesByBuddy } from "../matches"
 import MatchActions from "./MatchActions"
 
@@ -11,9 +11,11 @@ export default function BuddyMatches({ eventId, session, joined }) {
   // Alle hooks staan bovenaan, vóór elke return (regel van React)
   const currentUserId = session?.user?.id
   const { t } = useT()
+  const { label } = useMasterData()
 
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
 
   useEffect(() => {
     // Niet deelgenomen → niets laden
@@ -68,12 +70,22 @@ export default function BuddyMatches({ eventId, session, joined }) {
         "first_name,last_name,country_code,experience_level"
       )
 
+      if (!profiles) {
+        setLoadFailed(true)
+        setLoading(false)
+        return
+      }
+      setLoadFailed(false)
+
+      // Matches met een buddy zonder zichtbaar profiel (bijv. verwijderd account) vallen weg
       setMatches(
-        filtered.map((m) => ({
-          ...m,
-          users1: profiles.get(m.user1_id) || {},
-          users2: profiles.get(m.user2_id) || {},
-        }))
+        filtered
+          .filter((m) => profiles.has(buddyIdOf(m, currentUserId)))
+          .map((m) => ({
+            ...m,
+            users1: profiles.get(m.user1_id) || {},
+            users2: profiles.get(m.user2_id) || {},
+          }))
       )
       setLoading(false)
     }
@@ -91,6 +103,7 @@ export default function BuddyMatches({ eventId, session, joined }) {
 
   if (!joined) return null
   if (loading) return <StatusText>{t("buddies.loading")}</StatusText>
+  if (loadFailed) return <StatusText tone="danger">{t("common.profilesFailed")}</StatusText>
   if (matches.length === 0) return <EmptyState title={t("buddies.empty")} />
 
   return (
@@ -105,7 +118,7 @@ export default function BuddyMatches({ eventId, session, joined }) {
           <ListCard
             key={m.id}
             title={name}
-            meta={t("buddies.meta", { level: levelLabel(t, buddy.experience_level), country: buddy.country_code })}
+            meta={t("buddies.meta", { level: label("levels", buddy.experience_level), country: buddy.country_code })}
           >
             <MatchActions
               match={m}

@@ -5,10 +5,11 @@ import EventDetail from "./EventDetail"
 import ProfileForm from "../ProfileForm"
 import Home from "../Home"
 import UiShowcase from "./UiShowcase"
-import { useState } from "react"
+import AdminPage from "./admin/AdminPage"
+import { useEffect, useState } from "react"
 import {
   Button, TopBar, TopBarLink, BottomNav, BottomNavLink, LanguageSwitch,
-  PageContainer, StatusText, HomeIcon, CalendarIcon, UserIcon,
+  PageContainer, StatusText, HomeIcon, CalendarIcon, UserIcon, ShieldIcon,
 } from "./ui"
 import { useT } from "../i18n/LanguageProvider"
 
@@ -16,7 +17,16 @@ import { useT } from "../i18n/LanguageProvider"
 export default function Dashboard({ session }) {
   const [profileDirty, setProfileDirty] = useState(false)
   const [logoutFailed, setLogoutFailed] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(null) // null = nog aan het controleren
   const { t } = useT()
+
+  // Beheerder? Alleen voor het tonen van de link; de database controleert elke beheeractie zelf.
+  useEffect(() => {
+    supabase.rpc("is_admin").then(({ data, error }) => {
+      if (error) console.error("[ADMIN] is_admin check failed", error)
+      setIsAdmin(data === true)
+    })
+  }, [session?.user?.id])
 
   const handleLogout = async () => {
     setLogoutFailed(false)
@@ -49,6 +59,7 @@ export default function Dashboard({ session }) {
         <TopBarLink to="/" end>{t("nav.home")}</TopBarLink>
         <TopBarLink to="/events">{t("nav.events")}</TopBarLink>
         <TopBarLink to="/profile">{t("nav.profile")}</TopBarLink>
+        {isAdmin && <TopBarLink to="/admin">{t("nav.admin")}</TopBarLink>}
       </TopBar>
 
       {logoutFailed && (
@@ -74,6 +85,10 @@ export default function Dashboard({ session }) {
           <Route path="/events" element={<EventsList session={session} />} />
           <Route path="/events/:id" element={<EventDetail session={session} />} />
           <Route path="/ui" element={<UiShowcase />} />
+          <Route
+            path="/admin"
+            element={isAdmin === null ? null : isAdmin ? <AdminPage session={session} /> : <Navigate to="/" replace />}
+          />
           {/* Al ingelogd → login niet nodig */}
           <Route path="/login" element={<Navigate to="/" replace />} />
         </Routes>
@@ -84,6 +99,7 @@ export default function Dashboard({ session }) {
         <BottomNavLink to="/" end icon={<HomeIcon />}>{t("nav.home")}</BottomNavLink>
         <BottomNavLink to="/events" icon={<CalendarIcon />}>{t("nav.events")}</BottomNavLink>
         <BottomNavLink to="/profile" icon={<UserIcon />}>{t("nav.profile")}</BottomNavLink>
+        {isAdmin && <BottomNavLink to="/admin" icon={<ShieldIcon />}>{t("nav.admin")}</BottomNavLink>}
       </BottomNav>
     </>
   )
